@@ -456,6 +456,7 @@ function initMap(){
 
   /* 权限没给之前不主动要，免得每次刷新都弹；点 ◎ 才请求 */
   function doLocate(){
+    const b0=document.getElementById('badge'); if(b0) b0.style.display='';
     startWatch();
     geo.getCurrentPosition((status, result) => {
       if(status === 'complete' && result.position){
@@ -475,7 +476,7 @@ function initMap(){
   try{
     navigator.permissions.query({ name:'geolocation' }).then(st => {
       if(st.state === 'granted') doLocate();
-      else document.getElementById('badge').textContent = '点右上 ◎ 开启定位（只问这一次）';
+      else { const b=document.getElementById('badge'); b.style.display='none'; }
     });
   }catch(e){ doLocate(); }
 
