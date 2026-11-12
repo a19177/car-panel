@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>驾驶面板 · 地图+音乐</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:#0d0f12;
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    color:#fff;user-select:none;}
+
+  #map{position:absolute;inset:0;z-index:0;}
+  audio{display:none;}
+
+  .clockcard{
+    position:absolute;top:16px;left:16px;z-index:10;
+    background:rgba(16,19,24,.82);border:1px solid rgba(255,255,255,.12);
+    border-radius:18px;padding:12px 20px 10px;min-width:172px;
+  }
+  .clock{font-size:clamp(38px,5.2vw,64px);font-weight:200;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;}
+  .clock-sub{font-size:clamp(12px,1.2vw,16px);color:#9aa4b2;margin-top:4px;}
+
+  .rcol{position:absolute;top:16px;right:16px;z-index:10;display:flex;flex-direction:column;
+    gap:10px;align-items:flex-end;}
+  .tools{position:absolute;top:16px;right:16px;z-index:10;display:flex;flex-direction:column;gap:10px;align-items:center;}  .tbtn{width:52px;height:52px;border-radius:14px;background:rgba(16,19,24,.82);
+    border:1px solid rgba(255,255,255,.14);color:#fff;font-size:22px;font-weight:300;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .tbtn:active{background:rgba(60,70,85,.9);}
+  .tbtn.small{font-size:16px;font-weight:600;}
+  .tbtn.on{background:rgba(59,130,246,.32);border-color:rgba(120,180,255,.55);color:#bfdcff;}
+
+  .routecard{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:10;
+    background:rgba(16,19,24,.86);border:1px solid rgba(255,255,255,.14);
+    border-radius:16px;padding:12px 18px;display:none;align-items:center;gap:16px;
+    max-width:calc(100% - 300px);
+  }
+  .routecard.on{display:flex;}
+  .routecard .big{font-size:clamp(20px,2.4vw,30px);font-weight:600;white-space:nowrap;}
+  .routecard .sub{font-size:clamp(12px,1.3vw,16px);color:#9aa4b2;margin-top:2px;white-space:nowrap;}
+  #routeDest{max-width:190px;overflow:hidden;text-overflow:ellipsis;font-size:clamp(15px,1.7vw,21px);}
+  .routecard .divider{width:1px;height:34px;background:rgba(255,255,255,.16);}
+  .rc-close{background:none;border:none;color:#8b95a3;font-size:22px;cursor:pointer;padding:4px 8px;}
+
+  /* ===== 歌词区 ===== */
+  .lyricbox{
+    position:absolute;left:0;right:0;bottom:180px;z-index:8;
+    padding:14px 24px 18px;text-align:center;pointer-events:auto;cursor:pointer;
+    transition:bottom .25s, background .25s;
+    background:radial-gradient(62% 105% at 50% 52%, rgba(4,6,9,.66), rgba(4,6,9,.28) 62%, rgba(4,6,9,0) 82%);
+    display:none;
+  }
+  .lyricbox.on{display:block;}
+  .ly{white-space:pre-wrap;word-break:break-word;}
+  .ly.prev,.ly.next{font-size:clamp(15px,1.7vw,22px);color:rgba(255,255,255,.5);margin:6px 0;
+    text-shadow:0 2px 12px rgba(0,0,0,.95);}
+  .ly.cur{font-size:clamp(26px,3.4vw,46px);font-weight:600;line-height:1.25;margin:8px 0;
+    -webkit-text-stroke:1.2px rgba(0,0,0,.45);
+    filter:drop-shadow(0 3px 10px rgba(0,0,0,.95));
+    background:linear-gradient(90deg,#5bccff 0%,#5bccff var(--p,0%),#ffffff var(--p,0%),#ffffff 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+
+  body.lyricfull .lyricbox{
+    bottom:0;top:0;background:rgba(6,8,11,.72);backdrop-filter:blur(6px);
+    display:flex;flex-direction:column;justify-content:center;z-index:14;
+  }
+  body.lyricfull .ly{max-width:86%;margin-left:auto;margin-right:auto;}
+  body.lyricfull .ly.prev,body.lyricfull .ly.next{font-size:clamp(18px,2.2vw,28px);}
+  body.lyricfull .ly.cur{font-size:clamp(34px,5vw,68px);}
+
+  /* ===== 播放条 ===== */
+  .playerwrap{position:absolute;right:14px;bottom:104px;z-index:11;
+    display:flex;align-items:center;gap:8px;transition:bottom .28s ease;}
+  body.mini .playerwrap{bottom:14px;}
+  .player{
+    position:relative;height:74px;border-radius:18px;
+    width:min(600px,58vw);
+    background:rgba(18,21,26,.94);border:1px solid rgba(255,255,255,.12);
+    display:flex;align-items:center;gap:10px;padding:8px 12px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  .foldbtn{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    font-size:17px;color:#cfd8e3;background:rgba(18,21,26,.94);
+    border:1px solid rgba(255,255,255,.12);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4);}
+  /* 高德自带的右下角定位瞄准器，和我们自己的 ◎ 重复了 —— 藏掉 */
+  .amap-geolocation{display:none !important;}
+  
+  .cover{width:48px;height:48px;border-radius:11px;flex:0 0 auto;
+    background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:700;overflow:hidden;}
+  .pinfo{flex:1;min-width:0;}
+  .pname{font-size:clamp(15px,1.6vw,20px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .partist{font-size:clamp(11px,1.1vw,14px);color:#8b95a3;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pctl{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .pbtn{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;background:rgba(255,255,255,.06);cursor:pointer;border:1px solid rgba(255,255,255,.08);}
+  .pbtn:active{background:rgba(90,100,115,.9);}
+  .pbtn.play{width:52px;background:rgba(59,130,246,.22);border-color:rgba(90,160,255,.4);font-size:24px;}
+  .pbtn.on{background:rgba(59,130,246,.3);border-color:rgba(120,180,255,.55);color:#bfdcff;}
+  .pbtn.word{font-size:15px;font-weight:600;}
+
+  .pbar{position:absolute;right:14px;bottom:96px;height:5px;z-index:12;width:min(600px,58vw);
+    background:rgba(255,255,255,.12);border-radius:3px;overflow:hidden;transition:bottom .28s ease;}
+  body.mini .pbar{bottom:8px;}
+  .pfill{height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#7cc4ff);border-radius:3px;}
+
+  /* ===== 歌单 ===== */
+  .list{
+    position:absolute;right:12px;bottom:186px;z-index:13;width:min(360px,72vw);
+    background:rgba(18,21,26,.97);border:1px solid rgba(255,255,255,.14);
+    border-radius:16px;overflow:hidden;display:none;
+    box-shadow:0 14px 40px rgba(0,0,0,.6);}
+  .list.on{display:block;}
+  .lhead{padding:12px 16px;font-size:13px;color:#8b95a3;border-bottom:1px solid rgba(255,255,255,.08);}
+  .litem{padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);}
+  .litem:active{background:rgba(60,70,85,.6);}
+  .litem.on{background:rgba(59,130,246,.16);}
+  .lnum{width:22px;color:#8b95a3;font-size:13px;text-align:right;}
+  .lname{font-size:15px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lsinger{font-size:12px;color:#8b95a3;}
+
+  .dock{
+    position:absolute;left:0;right:0;bottom:0;z-index:10;
+    padding:8px 14px 14px;display:flex;gap:10px;
+    background:linear-gradient(to top,rgba(8,10,13,.94) 40%,rgba(8,10,13,0));
+    transition:transform .28s ease,opacity .22s ease;
+  }
+  body.mini .dock{transform:translateY(110%);opacity:0;pointer-events:none;}
+  .tile{flex:1;min-width:0;background:rgba(26,30,36,.92);border:1px solid rgba(255,255,255,.1);
+    border-radius:14px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+    cursor:pointer;transition:background .15s;}
+  .tile:active{background:rgba(58,66,78,.95);}
+  .tile .ico{font-size:clamp(18px,2vw,26px);line-height:1;}
+  .tile .nm{font-size:clamp(15px,1.6vw,20px);font-weight:400;color:#dfe6ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+
+  .toast{position:absolute;left:50%;bottom:196px;transform:translateX(-50%);
+    z-index:20;background:rgba(16,19,24,.92);border:1px solid rgba(255,255,255,.14);
+    padding:12px 20px;border-radius:12px;font-size:15px;display:none;white-space:nowrap;}
+  .toast.on{display:block;}
+
+  .badge{position:absolute;left:16px;bottom:186px;z-index:10;font-size:12px;color:#7b8794;
+    background:rgba(16,19,24,.7);padding:4px 10px;border-radius:8px;}
+
+  /* ===== 毛豆：语音入口（借车机自带语音输入，不要录音权限） ===== */
+  /* 放在播放条最左端，和音乐一分为二，不另占屏幕 */
+  .mslot{flex:0 0 auto;display:flex;align-items:center;height:100%;}
+  .pdiv{flex:0 0 auto;width:1px;height:34px;background:rgba(255,255,255,.1);margin:0 2px;}
+  .mtpill{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.1);border-radius:999px;
+    padding:6px 11px;cursor:pointer;
+    transition:border-color .18s,background .18s,padding .18s;}
+  .mtwave{display:flex;align-items:center;gap:2px;height:13px;}
+  .mtwave i{display:block;width:2px;height:4px;background:#7b8794;border-radius:1px;
+    opacity:.5;animation:none;}
+  .mtpill .txt{display:none;font-size:12px;color:#9aa4b2;letter-spacing:.5px;white-space:nowrap;}
+
+  /* 待机 = 灰、静止、不写字 */
+  /* 聆听 = 蓝、波形跑动、显出文字 */
+  .mtpill.listening{border-color:rgba(120,180,255,.6);background:rgba(24,34,48,.95);
+    padding:6px 14px;box-shadow:0 0 0 2px rgba(59,130,246,.2),0 6px 22px rgba(0,0,0,.45);}
+  .mtpill.listening .txt{display:inline;color:#dceaff;}
+  .mtpill.listening .mtwave i{background:#5aa8ff;opacity:1;animation:wv 1.05s ease-in-out infinite;}
+
+  /* 明白 = 绿、短暂 */
+  .mtpill.speaking{border-color:rgba(90,225,170,.55);background:rgba(18,38,32,.95);
+    padding:6px 14px;box-shadow:0 0 0 2px rgba(60,200,140,.18),0 6px 22px rgba(0,0,0,.45);}
+  .mtpill.speaking .txt{display:inline;color:#bff0d8;}
+  .mtpill.speaking .mtwave i{background:#57d9a3;opacity:1;animation:wv .65s ease-in-out infinite;}
+  .mtwave i:nth-child(2){animation-delay:.15s;}
+  .mtwave i:nth-child(3){animation-delay:.3s;}
+  .mtwave i:nth-child(4){animation-delay:.45s;}
+  @keyframes wv{0%,100%{height:4px;opacity:.55}50%{height:14px;opacity:1}}
+
+  /* 点一下：原位展开成一条窄输入条，不叠第二层窗 */
+  .mtbox{display:none;align-items:center;gap:7px;width:200px;height:32px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(120,180,255,.55);
+    border-radius:999px;padding:0 5px 0 11px;}
+  .mtbox.on{display:flex;}
+  .mtbox .mtwave{flex:0 0 auto;}
+  .mtbox input{flex:1;min-width:0;height:100%;background:transparent;border:0;outline:none;
+    color:#e8eef6;font-size:12.5px;padding:0;}
+  .mtbox input::placeholder{color:#6d7886;}
+  .mtgo{flex:0 0 auto;width:23px;height:23px;line-height:21px;text-align:center;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);
+    color:#cfd8e3;border-radius:999px;font-size:11px;cursor:pointer;}
+
+  /* 琥珀 = 想一下 */
+  .mtbox.thinking{border-color:rgba(240,180,90,.6);}
+  .mtbox.thinking .mtwave i{background:#f0b45a;opacity:1;animation:wv .42s ease-in-out infinite;}
+  .mtbox.listening .mtwave i{background:#5aa8ff;opacity:1;animation:wv 1.05s ease-in-out infinite;}
+  .mtbox.speaking{border-color:rgba(90,225,170,.55);}
+  .mtbox.speaking .mtwave i{background:#57d9a3;opacity:1;animation:wv .65s ease-in-out infinite;}
+  .mtpill.thinking{border-color:rgba(240,180,90,.55);}
+  .mtpill.thinking .mtwave i{background:#f0b45a;opacity:1;animation:wv .42s ease-in-out infinite;}
+
+  /* ===== 速度 HUD ===== */
+  .hud{position:absolute;left:16px;top:112px;z-index:10;
+    background:rgba(16,19,24,.85);border:1px solid rgba(255,255,255,.13);
+    border-radius:16px;padding:10px 16px;display:flex;align-items:center;gap:14px;min-width:172px;}
+  .spd{font-size:clamp(30px,4vw,46px);font-weight:300;line-height:1;font-variant-numeric:tabular-nums;}
+  .spd .unit{font-size:13px;color:#9aa4b2;margin-left:5px;font-weight:400;}
+  .hudsub{font-size:clamp(12px,1.2vw,15px);color:#9aa4b2;max-width:150px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hudturn{font-size:clamp(15px,1.8vw,22px);font-weight:600;color:#7cc4ff;}
+
+  /* ===== 导航大卡（仿原版：到达时间 / 剩余分钟 / 剩余米数） ===== */
+  .navcard{position:absolute;left:14px;top:14px;z-index:10;
+    background:rgba(16,19,24,.88);border:1px solid rgba(255,255,255,.13);
+    border-radius:18px;padding:10px 20px 12px;min-width:196px;
+    box-shadow:0 6px 24px rgba(0,0,0,.45);}
+  .arrrow{display:flex;align-items:baseline;gap:7px;}
+  .navnow{font-size:11.5px;color:#8b95a3;letter-spacing:.3px;margin:0 0 3px;}
+  .navnow b{color:#e8eef6;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums;}
+  .arrtime{font-size:clamp(32px,4.4vw,50px);font-weight:600;line-height:1.05;
+    font-variant-numeric:tabular-nums;letter-spacing:-1px;}
+  .arrlab{font-size:clamp(12px,1.3vw,16px);color:#9aa4b2;}
+  .navrow{font-size:clamp(12px,1.35vw,16px);color:#cfd8e3;margin-top:5px;display:none;}
+  .navrow b{color:#fff;font-size:clamp(15px,1.7vw,20px);}
+  .navmet{display:none;font-size:clamp(23px,2.9vw,34px);font-weight:600;margin-top:1px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.5px;}
+  .navmet span{font-size:clamp(12px,1.3vw,15px);color:#9aa4b2;font-weight:400;margin-left:4px;}
+  .navend{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;
+    font-size:12px;color:#cfd8e3;background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:4px 10px;cursor:pointer;}
+
+  /* ===== 转向大卡（仿原版深蓝转弯图） ===== */
+  .turncard{position:absolute;left:14px;top:158px;z-index:10;display:none;align-items:center;gap:12px;
+    background:linear-gradient(135deg,#164a86,#0a2038);
+    border:1px solid rgba(110,175,255,.45);border-radius:18px;padding:12px 18px;min-width:196px;
+    box-shadow:0 8px 28px rgba(0,0,0,.5);}
+  .turncard.on{display:flex;}
+  .turnico{font-size:clamp(28px,3.4vw,40px);line-height:1;color:#8ecbff;}
+  .turndist{font-size:clamp(15px,1.8vw,21px);font-weight:600;}
+  .turntext{font-size:clamp(11px,1.25vw,14px);color:#a8c8ee;margin-top:2px;
+    max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* ===== 右下角小速度 ===== */
+  .spdv{position:absolute;right:16px;top:262px;z-index:9;
+    background:rgba(16,19,24,.8);border:1px solid rgba(255,255,255,.12);
+    border-radius:12px;padding:6px 12px;font-size:clamp(13px,1.5vw,17px);color:#dfe6ee;
+    font-variant-numeric:tabular-nums;}
+  .spdv b{font-size:clamp(18px,2.2vw,26px);font-weight:600;}
+
+  /* ===== 指南针（与工具按钮同款方块，只在旋转后点亮） ===== */
+  .cmp{width:52px;height:52px;border-radius:14px;position:relative;
+    background:rgba(16,19,24,.82);border:1px solid rgba(255,255,255,.14);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .cmp-needle{font-size:17px;line-height:1;color:#e0645a;
+    transition:transform .15s linear;transform-origin:center;opacity:.9;}
+  .cmp-n{position:absolute;top:4px;left:50%;transform:translateX(-50%);
+    font-size:8px;letter-spacing:.5px;color:#7b8794;}
+  .cmp.on{border-color:rgba(120,180,255,.55);background:rgba(59,130,246,.28);}
+  .cmp.on .cmp-needle{color:#ff8a7a;}
+  .cmp.on .cmp-n{color:#bfdcff;}
+
+  /* ===== 车辆朝向图标 + 淡方位环 ===== */
+  .carmark{position:relative;width:0;height:0;}
+  .carring{position:absolute;left:0;top:0;width:112px;height:112px;
+    margin:-56px 0 0 -56px;border-radius:50%;
+    background:radial-gradient(circle,rgba(90,170,255,.26) 0%,rgba(90,170,255,.10) 46%,rgba(90,170,255,0) 68%);
+    pointer-events:none;}
+  .carico{position:absolute;left:0;top:0;
+    transform:translate(-50%,-50%);
+    transform-origin:center;transition:transform .18s linear;
+    filter:drop-shadow(0 2px 8px rgba(0,0,0,.55));}
+  .carlbl{position:absolute;left:0;top:0;font-size:12px;font-weight:400;
+    color:rgba(255,255,255,.42);text-shadow:0 1px 4px rgba(0,0,0,.9);
+    transform:translate(-50%,-50%);pointer-events:none;}
+  .carlbl.north{font-size:17px;font-weight:700;color:rgba(255,255,255,.96);
+    text-shadow:0 0 8px rgba(0,0,0,.95),0 1px 3px rgba(0,0,0,.9);letter-spacing:1px;}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<audio id="au" preload="none"></audio>
+
+<div class="navcard">
+  <div class="navnow">现在 <b id="nowClock">--:--</b></div>
+  <div class="arrrow"><span class="arrtime" id="arrTime">--:--</span><span class="arrlab" id="arrLab">现在</span></div>
+  <div class="navrow" id="navRow2">剩余 <b id="remMin">--</b> 分钟</div>
+  <div class="navmet" id="navMet"><b id="remMeter">--</b><span>米</span></div>
+  <div class="navend" id="btnClear">结束</div>
+</div>
+
+<div class="turncard" id="turnCard">
+  <div class="turnico" id="turnIco">↱</div>
+  <div>
+    <div class="turndist" id="turnDist">—</div>
+    <div class="turntext" id="turnText">转向提示</div>
+  </div>
+</div>
+
+<div class="spdv" style="display:none"><b id="spdNum">--</b> km/h</div>
+
+<div class="tools">
+  <div class="tbtn small on" id="btn3D" title="3D 视角">3D</div>
+  <div class="tbtn small" id="btnLocate" title="回到我的位置">◎</div>
+  <div class="tbtn" id="btnZoomIn">＋</div>
+  <div class="tbtn" id="btnZoomOut">－</div>
+  <div class="cmp" id="compass" title="点一下回正北">
+    <span class="cmp-n">N</span>
+    <span class="cmp-needle" id="cmpNeedle">▲</span>
+  </div>
+</div>
+
+<div class="routecard" id="routeCard">
+  <div>
+    <div class="big" id="routeTime">--</div>
+    <div class="sub" id="routeDist">--</div>
+  </div>
+</div>
+
+<div class="lyricbox" id="lyricBox">
+  <div class="ly prev" id="lyPrev"></div>
+  <div class="ly cur" id="lyCur">点这里听歌</div>
+  <div class="ly next" id="lyNext"></div>
+</div>
+
+<div class="playerwrap">
+<div class="player">
+  <div class="mslot">
+    <div class="mtpill" id="mtPill">
+      <span class="mtwave"><i></i><i></i><i></i><i></i></span>
+    </div>
+    <div class="mtbox" id="mtBox">
+      <span class="mtwave"><i></i><i></i><i></i><i></i></span>
+      <input id="mtInput" type="text" placeholder="说一句…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="mtgo" id="mtGo">↵</div>
+    </div>
+  </div>
+  <div class="pdiv"></div>
+  <div class="cover" id="cover">🎵</div>
+  <div class="pinfo">
+    <div class="pname" id="pName">还没放歌</div>
+    <div class="partist" id="pArtist">点 ☰ 选一首</div>
+  </div>
+  <div class="pctl">
+    <div class="pbtn" id="btnPrev">⏮</div>
+    <div class="pbtn play" id="btnPlay">▶</div>
+    <div class="pbtn" id="btnNext">⏭</div>
+    <div class="pbtn" id="btnList">☰</div>
+    <div class="pbtn" id="btnLyric" title="显示歌词">词</div>
+  </div>
+</div>
+<div class="foldbtn" id="btnFold" title="收起 / 展开底栏">⌄</div>
+</div>
+<div class="pbar" id="pBar"><div class="pfill" id="pFill"></div></div>
+
+<div class="list" id="songList">
+  <div class="lhead">歌单 · 点一首就播</div>
+  <div id="listBody"></div>
+</div>
+
+<div class="dock" id="dock"></div>
+
+<div class="toast" id="toast"></div>
+<div class="badge" id="badge">地图加载中…</div>
+
+<script>
+  window._AMapSecurityConfig = { securityJsCode: 'f2700294abf16932e5770d2d714f4546' };
+</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=9998e4b97f885a4d033fba40c3e3183a&plugin=AMap.Geolocation,AMap.PlaceSearch,AMap.Driving"></script>
+
+<script>
+/* ============ 歌单数据（从网易云外链取） ============ */
+const SONGS = [
+{
+"id": 570837763,
+"name": "笨小孩",
+"artist": "刘德华 / 吴宗宪 / 柯受良",
+"lrc": "[00:00.000] 作词 : 刘德华\n[00:01.000] 作曲 : 高枫\n[00:02.000] 编曲 : 江建民\n[00:24.124]哦哦哦 宁静的小村外 有一个笨小孩\n[00:27.782]出生在六零年代\n[00:30.760]十来岁到城市 不怕那太阳晒\n[00:33.764]努力在七零年代\n[00:36.820]发现呀城市里 朋友们不用去灌溉\n[00:42.724]花自然会开\n[00:47.922]哦哦哦 转眼间那么快 这一个笨小孩\n[00:51.631]又到了八零年代\n[00:54.505]三十岁到头来 不算好也不坏\n[00:57.561]经过了九零年代\n[01:00.539]最无奈他自己 总是会慢人家一拍\n[01:06.495]没有钱在那口袋\n[01:11.615]哎哟 往着胸口拍一拍呀 勇敢站起来\n[01:18.407]不用心情太坏\n[01:23.501]哎哟 向着天空拜一拜呀 别想不开\n[01:30.371]老天自有安排\n[01:42.204]笨小孩跟聪明的小孩有没有什么分别\n[01:45.574]当然有分别啦，聪明的小孩很厉害的啦\n[01:49.571]只是笨小孩也很可爱的\n[01:59.602]哦哦哦 他们说城市里 男不坏女不爱\n[02:06.159]怎么想也不明白\n[02:09.032]妈妈说真心爱 会爱得很精彩\n[02:12.089]结果我没有女孩\n[02:15.014]笨小孩依然是坚强得像石头一块\n[02:20.657]只是晚上寂寞难耐\n[02:26.142]哎哟 往着胸口拍一拍呀 勇敢站起来\n[02:32.882]不用心情太坏\n[02:38.185]哎哟 向着天空拜一拜呀 别想不开\n[02:44.794]老天自有安排\n[02:50.123]哎哟 往着胸口拍一拍呀 勇敢站起来\n[02:56.758]管它上山下海\n[03:01.956]哎哟 向着天空拜一拜呀 别想不开\n[03:08.722]老天自有安排\n[03:14.600]老天爱笨小孩\n[03:22.410]\n"
+},
+{
+"id": 409650851,
+"name": "霜雪千年",
+"artist": "洛天依 / 乐正绫",
+"lrc": "[00:00.00] 作词 : COP\n[00:01.00] 作曲 : COP\n[00:02.00] 编曲 : COP\n[00:15.29]双：梨花香\n[00:18.60]缠着衣角掠过熙攘\n[00:21.83]复悄入红帘深帐\n[00:25.60]听枝头黄鹂逗趣儿\n[00:27.50]细风绕指淌\n[00:29.78]坐船舫\n[00:31.38]兰桨拨开雾霭迷茫\n[00:35.26]不觉已一日过半\n[00:38.72]过眼的葱郁风光\n[00:41.20]悉数泛了黄\n[00:44.44]囧：褪尽温度的风\n[00:46.59]无言牵引中\n[00:47.71]便清晰了在此的眉目\n[00:51.27]暮色的消融\n[00:52.85]隐约了晦朔葱茏\n[00:56.68]双：在这老街回眸\n[00:59.29]烟云中追溯我是谁\n[01:01.22]只消暮雨点滴\n[01:02.67]便足以粉饰这是非\n[01:04.86]囧：待这月色涌起\n[01:07.99]谁人轻叩这门扉\n[01:11.32]双：苔绿青石板街\n[01:13.20]斑驳了流水般岁月\n[01:15.15]小酌三盏两杯\n[01:16.48]理不清缠绕的情结\n[01:18.47]囧：在你淡漠眉间\n[01:21.50]瞥见离人的喜悲霜雪\n[01:38.43]囧：楼阁现\n[01:40.21]尘飞雾散荧光翩跹\n[01:44.60]显露出斑驳石阶\n[01:47.29]入眼是落英纷然\n[01:49.61]芳草入深院\n[01:52.20]凭栏杆\n[01:53.79]小桌上置琼觞两盏\n[01:57.65]阖眼听清风疏叶\n[02:01.70]似曾有欢声笑言\n[02:03.36]萦绕这高轩\n[02:06.29]双：云动寂静鸣蝉\n[02:08.18]雨坠激漪涟\n[02:09.90]皴擦点染勾勒这世间\n[02:13.47]缘起的一眼\n[02:15.30]定格了三生千年\n[02:19.14]囧：在这老街回眸\n[02:21.64]烟云中追溯我是谁\n[02:23.52]只消暮雨点滴\n[02:24.93]便足以粉饰这是非\n[02:27.80]双：待这月色涌起\n[02:30.44]谁人轻叩这门扉\n[02:33.60]囧：苔绿青石板街\n[02:35.30]斑驳了流水般岁月\n[02:37.42]小酌三盏两杯\n[02:38.67]理不清缠绕的情结\n[02:40.78]双：在你淡漠眉间\n[02:44.25]瞥见离人的喜悲霜雪\n[03:01.30]囧：三月梨花雪\n[03:02.78]几载开了又败\n[03:04.71]双：笔锋走黑白\n[03:06.37]丹青中穿插无奈\n[03:08.20]合：彼时那弯儿月\n[03:09.86]何时初现于江畔\n[03:11.61]双：而我又在待何人\n[03:14.64]囧：在这凉亭 回眸\n[03:16.41]千年后忆起你是谁\n[03:18.53]只消月色隐约\n[03:19.93]便足以粉饰这是非\n[03:21.89]双：待这回忆涌起\n[03:25.36]恍惚之间已下泪\n[03:28.16]囧：枫红十里长街\n[03:30.20]红帘后谁人蹙着眉\n[03:32.16]遥梦桑竹桃源\n[03:33.64]轮回中曾道别的地点\n[03:36.22]双：愿今生再相见\n[03:39.60]消融你眉间\n[03:41.21]合：悲戚霜雪\n[03:45.12]合：Ah~~~\n"
+},
+{
+"id": 1939992343,
+"name": "丁香花",
+"artist": "唐磊",
+"lrc": "[00:31.437]你说你最爱丁香花\n[00:34.800]因为你的名字就是它\n[00:38.800]多么忧郁的花\n[00:41.397]多愁善感的人啊\n[00:45.078]当花儿枯萎的时候\n[00:47.918]当画面定格的时候\n[00:51.980]多么娇嫩的花\n[00:55.007]却躲不过风吹雨打\n[00:58.888]飘啊摇啊的一生\n[01:01.817]多少美丽编织的梦啊\n[01:05.498]就这样匆匆你走了\n[01:09.170]留给我一生牵挂\n[01:12.397]那坟前开满鲜花是你多么渴望的美啊\n[01:19.417]你看那满山遍野\n[01:24.389]你还觉得孤单吗\n[01:26.770]你听那有人在唱那首你最爱的歌谣啊\n[01:33.517]尘世间多少繁芜\n[01:37.467]从此不必再牵挂\n[01:52.317]\n[02:26.097]你说你最爱丁香花\n[02:30.037]因为你的名字就是它\n[02:33.897]多么忧郁的花\n[02:37.397]多愁善感的人啊\n[02:40.427]当花儿枯萎的时候\n[02:43.897]当画面定格的时候\n[02:47.997]多么娇嫩的花\n[02:50.960]却躲不过风吹雨打\n[02:54.477]飘啊摇啊的一生\n[02:58.060]多少美丽编织的梦啊\n[03:01.497]就这样匆匆你走了\n[03:06.680]留给我一生牵挂\n[03:09.297]那坟前开满鲜花是你多么渴望的美啊\n[03:16.587]你看那满山遍野\n[03:19.897]你还觉得孤单吗\n[03:22.797]你听那有人在唱那首你最爱的歌谣啊\n[03:29.488]尘世间多少繁芜\n[03:33.016]从此不必再牵挂\n[03:38.617]那坟前开满鲜花是你多么渴望的美啊\n[03:46.997]你看那满山遍野\n[03:50.397]你还觉得孤单吗\n[03:53.347]你听那有人在唱那首你最爱的歌谣啊\n[04:00.697]城市间多少繁芜\n[04:03.997]从此不必再牵挂\n[04:08.597]院子里栽满丁香花\n[04:11.770]开满紫色美丽的鲜花\n[04:16.779]我在这里陪着她\n[04:18.506]一生一世守护她\n[04:23.507]\n"
+},
+{
+"id": 2668397359,
+"name": "晴天",
+"artist": "周杰伦（翻唱版）",
+"lrc": "[00:00.000] 作词 : Chieh-lun Chou\n[00:00.000] 作曲 : Chieh-lun Chou\n[00:00.000]晴天 - 周杰伦 (Jay Chou)\n[00:02.250]词：周杰伦\n[00:04.500]曲：周杰伦\n[00:06.750]编曲：周杰伦\n[00:09.000]制作人：周杰伦\n[00:11.250]合声：周杰伦\n[00:13.500]合声编写：周杰伦\n[00:15.750]吉他：蔡科俊Again\n[00:18.000]贝斯：陈任佑\n[00:20.250]鼓：陈柏州\n[00:22.510]录音助理：刘勇志\n[00:24.760]录音工程：杨瑞代（Alfa Studio）\n[00:27.010]混音工程：杨大纬（杨大纬录音工作室）\n[00:29.260]故事的小黄花\n[00:32.710]从出生那年就飘着\n[00:36.240]童年的荡秋千\n[00:39.750]随记忆一直晃到现在\n[00:42.910]Re So So Si Do Si La\n[00:45.930]So La Si Si Si Si La Si La So\n[00:49.870]吹着前奏望着天空\n[00:53.200]我想起花瓣试着掉落\n[00:56.720]为你翘课的那一天\n[00:58.830]花落的那一天\n[01:00.600]教室的那一间\n[01:02.320]我怎么看不见\n[01:04.120]消失的下雨天\n[01:05.810]我好想再淋一遍\n[01:09.990]没想到失去的勇气我还留着\n[01:16.120]好想再问一遍\n[01:17.970]你会等待还是离开\n[01:24.910]刮风这天我试过握着你手\n[01:30.450]但偏偏雨渐渐大到我看你不见\n[01:38.880]还要多久我才能在你身边\n[01:45.440]等到放晴的那天也许我会比较好一点\n[01:52.870]从前从前有个人爱你很久\n[01:58.540]但偏偏风渐渐把距离吹得好远\n[02:06.940]好不容易又能再多爱一天\n[02:13.500]但故事的最后你好像还是说了拜拜\n[02:34.900]为你翘课的那一天\n[02:36.880]花落的那一天\n[02:38.660]教室的那一间\n[02:40.390]我怎么看不见\n[02:42.150]消失的下雨天\n[02:43.870]我好想再淋一遍\n[02:48.000]没想到失去的勇气我还留着\n[02:54.150]好想再问一遍\n[02:56.030]你会等待还是离开\n[03:02.920]刮风这天我试过握着你手\n[03:08.490]但偏偏雨渐渐大到我看你不见\n[03:16.940]还要多久我才能在你身边\n[03:23.430]等到放晴的那天也许我会比较好一点\n[03:30.870]从前从前有个人爱你很久\n[03:37.140]偏偏风渐渐把距离吹得好远\n[03:44.880]好不容易又能再多爱一天\n[03:51.420]但故事的最后你好像还是说了拜拜\n[03:58.490]刮风这天我试过握着你手\n[04:01.970]但偏偏雨渐渐大到我看你不见\n[04:05.650]还要多久我才能够在你身边\n[04:09.070]等到放晴那天也许我会比较好一点\n[04:12.920]从前从前有个人爱你很久\n[04:15.910]但偏偏雨渐渐把距离吹得好远\n[04:19.380]好不容易又能再多爱一天\n[04:22.860]但故事的最后你好像还是说了拜\n"
+}
+];
+
+/* ============ 地图部分 ============ */
+const CITY = '南昌';
+const HOME_CENTER = [115.8582, 28.6820];
+const TILES = [
+  { key:'home',  icon:'🏠', name:'回家',   kw:'家' },
+  { key:'work',  icon:'🏢', name:'公司',   kw:'公司' },
+  { key:'charge',icon:'⚡', name:'充电站', kw:'充电站' },
+  { key:'gas',   icon:'⛽', name:'加油站', kw:'加油站' },
+  { key:'park',  icon:'🅿️', name:'停车场', kw:'停车场' },
+  { key:'wc',    icon:'🚻', name:'找厕所', kw:'公共卫生间' },
+];
+const STORE = 'drive_panel_v2';
+let settings = loadSettings();
+let map, driving, destMarker, myMarker, myPos, curDest, geo;
+var routePts = [], routeCum = [], routeTotal = 0, routeSteps = [], watchId = null, lastPos = null;
+
+function loadSettings(){ try{ return JSON.parse(localStorage.getItem(STORE) || '{}'); }catch(e){ return {}; } }
+function saveSettings(){ localStorage.setItem(STORE, JSON.stringify(settings)); }
+
+const WEEK = ['周日','周一','周二','周三','周四','周五','周六'];
+function tick(){
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  const nc = document.getElementById('nowClock');
+  if(nc) nc.textContent = hh + ':' + mm;
+  if(!curDest){
+    document.getElementById('arrTime').textContent = hh + ':' + mm;
+    document.getElementById('arrLab').textContent = (d.getMonth()+1) + '月' + d.getDate() + '日 ' + WEEK[d.getDay()];
+    document.getElementById('navRow2').style.display = 'none';
+    document.getElementById('navMet').style.display = 'none';
+    document.getElementById('turnCard').classList.remove('on');
+  }
+}
+tick(); setInterval(tick, 1000);
+
+function toast(msg, ms){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h);
+  t._h = setTimeout(()=>t.classList.remove('on'), ms || 2200);
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function initMap(){
+  if(typeof AMap === 'undefined'){
+    document.getElementById('badge').textContent = '高德地图没加载出来（检查网络或 Key）';
+    return;
+  }
+  map = new AMap.Map('map', { zoom:15, center:HOME_CENTER, viewMode:'3D', pitch:50, rotation:0, resizeEnable:true, showLabel:true });
+  window.__map__ = map;
+  try{ map.setStatus({ rotateEnable:true, pitchEnable:true, dragEnable:true }); map.setPitch(55); }catch(e){}
+  try{
+    map.on('rotatechange', syncCompass);
+    map.on('mapmove', syncCompass);
+    map.on('zoomchange', syncCompass);
+  }catch(e){}
+  is3D = true;
+
+  geo = new AMap.Geolocation({ enableHighAccuracy:true, timeout:12000, zoomToAccuracy:false });
+  map.addControl(geo);
+
+  /* 权限没给之前不主动要，免得每次刷新都弹；点 ◎ 才请求 */
+  function doLocate(){
+    startWatch();
+    geo.getCurrentPosition((status, result) => {
+      if(status === 'complete' && result.position){
+        myPos = result.position;
+        map.setZoomAndCenter(15, myPos);
+        if(myMarker) myMarker.setMap(null);
+        myMarker = makeMyMarker();
+        updateCarMarker({ coords:{ longitude:myPos[0], latitude:myPos[1], heading:null } });
+        document.getElementById('badge').textContent = '已定位：' + (result.formattedAddress || '当前位置').slice(0,22);
+      }else{
+        document.getElementById('badge').textContent = '没拿到定位，先用南昌市中心做起点';
+      }
+    });
+  }
+  window.__doLocate = doLocate;
+
+  try{
+    navigator.permissions.query({ name:'geolocation' }).then(st => {
+      if(st.state === 'granted') doLocate();
+      else document.getElementById('badge').textContent = '点右上 ◎ 开启定位（只问这一次）';
+    });
+  }catch(e){ doLocate(); }
+
+  buildDock();
+
+  setTimeout(() => {
+    const b = document.getElementById('badge');
+    if(b.textContent === '地图加载中…'){
+      b.textContent = '定位不可用，先用南昌市中心做起点';
+      setTimeout(()=>{ if(b.textContent.indexOf('定位不可用') === 0) b.textContent = ''; }, 6000);
+    }
+  }, 4500);
+}
+
+function buildDock(){
+  const dock = document.getElementById('dock');
+  dock.innerHTML = '';
+  TILES.forEach(t => {
+    const s = settings[t.key] || {};
+    const name = s.name || t.name, kw = s.kw || t.kw;
+    const el = document.createElement('div');
+    el.className = 'tile';
+    el.innerHTML = '<div class="ico">' + t.icon + '</div><div class="nm">' + esc(name) + '</div>';
+    let timer = null, longPressed = false;
+    el.addEventListener('pointerdown', () => { longPressed = false; timer = setTimeout(()=>{ longPressed = true; editTile(t, name, kw); }, 650); });
+    const cancel = () => clearTimeout(timer);
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointerleave', cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.addEventListener('click', () => { if(longPressed){ longPressed=false; return; } goKeyword(kw); });
+    dock.appendChild(el);
+  });
+}
+
+function editTile(t, name, kw){
+  const n = prompt('这个按钮叫什么？（如：南昌西站）', name);
+  if(n === null) return;
+  const k = prompt('在地图上搜什么？', kw);
+  if(k === null) return;
+  settings[t.key] = { name:n.trim() || t.name, kw:k.trim() || t.kw };
+  saveSettings(); buildDock();
+}
+
+function goKeyword(kw){
+  if(!map){ toast('地图还没准备好'); return; }
+  toast('正在找「' + kw + '」…');
+  const ps = new AMap.PlaceSearch({ city:CITY, citylimit:false, pageSize:1 });
+  ps.search(kw, (status, result) => {
+    if(status === 'complete' && result.poiList && result.poiList.pois && result.poiList.pois.length){
+      const poi = result.poiList.pois[0];
+      curDest = { name:poi.name, loc:poi.location };
+      if(destMarker) destMarker.setMap(null);
+      destMarker = new AMap.Marker({ position:poi.location, title:poi.name });
+      destMarker.setMap(map);
+      map.setZoomAndCenter(14, poi.location);
+      route();
+    }else{
+      toast('没找到「' + kw + '」，换个说法试试');
+    }
+  });
+}
+
+function route(){
+  if(!curDest) return;
+  const origin = myPos || map.getCenter();
+  if(!driving) driving = new AMap.Driving({ map:map, hideMarkers:false, autoFitView:true });
+  driving.clear();
+  driving.search(origin, curDest.loc, (status, result) => {
+    if(status === 'complete' && result.routes && result.routes.length){
+      const r = result.routes[0];
+      buildRouteGeometry(r);
+      const arrive = new Date(Date.now() + r.time*1000);
+      const hh = String(arrive.getHours()).padStart(2,'0'), mm = String(arrive.getMinutes()).padStart(2,'0');
+      document.getElementById('arrTime').textContent = hh + ':' + mm;
+      document.getElementById('arrLab').textContent = '到达';
+      document.getElementById('navRow2').style.display = 'block';
+      document.getElementById('navMet').style.display = 'block';
+      document.getElementById('remMin').textContent = String(Math.max(1, Math.round(r.time/60)));
+      document.getElementById('remMeter').textContent = String(Math.round(r.distance/10)*10);
+      document.getElementById('btnClear').style.display = 'block';
+      followMap = true;
+      if(lastPos) updateHUD(lastPos);
+    }else{
+      toast('路线没算出来，可能起点太远');
+    }
+  });
+}
+
+document.getElementById('btnZoomIn').onclick = () => map && map.zoomIn();
+document.getElementById('btnZoomOut').onclick = () => map && map.zoomOut();
+function set3D(on){
+  is3D = !!on;
+  const b = document.getElementById('btn3D');
+  if(b) b.classList.toggle('on', is3D);
+  if(map){
+    try{ map.setPitch(is3D ? 55 : 0); }catch(e){}
+    if(!is3D){ try{ map.setRotation(0); }catch(e){} }
+  }
+  syncCompass();
+}
+
+document.getElementById('btn3D').onclick = () => {
+  set3D(!is3D);
+  toast(is3D ? '3D 视角' : '2D 平视');
+};
+document.getElementById('compass').onclick = () => {
+  if(map) map.setRotation(0);
+  syncCompass();
+  toast('已回正北');
+};
+document.getElementById('btnLocate').onclick = () => {
+  if(myPos){ map.setZoomAndCenter(16, myPos); return; }
+  toast('正在重新定位…');
+  if(geo){
+    geo.getCurrentPosition((status, result) => {
+      if(status === 'complete' && result.position){
+        myPos = result.position; map.setZoomAndCenter(16, myPos);
+        if(!myMarker){
+          myMarker = makeMyMarker();
+        }else{ myMarker.setPosition(myPos); }
+        updateCarMarker({ coords:{ longitude:myPos[0], latitude:myPos[1], heading:null } });
+        toast('定位成功');
+      }else{ toast('这台机器不给定位权限'); }
+    });
+  }
+};
+document.getElementById('btnClear').onclick = () => {
+  document.getElementById('btnClear').style.display = 'none';
+  document.getElementById('navRow2').style.display = 'none';
+  document.getElementById('navMet').style.display = 'none';
+  document.getElementById('turnCard').classList.remove('on');
+  document.getElementById('routeCard').classList.remove('on');
+  if(driving) driving.clear();
+  if(destMarker){ destMarker.setMap(null); destMarker = null; }
+  curDest = null;
+  followMap = false;
+  routePts = []; routeCum = []; routeSteps = []; routeTotal = 0;
+  if(map){ map.setRotation(0); map.setZoomAndCenter(15, myPos || HOME_CENTER); }
+};
+
+if(typeof AMap !== 'undefined'){ initMap(); }
+else{
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if(typeof AMap === 'undefined') document.getElementById('badge').textContent = '高德地图没加载出来（检查网络或 Key）';
+      else initMap();
+    }, 1200);
+  });
+}
+
+/* ============ 速度 HUD（车速来自定位，剩余距离来自路线） ============ */
+/* ============ 导航数据（剩余米数 / 剩余分钟 / 转向提示） ============ */
+var routeSec = 0, is3D = false;
+let followMap = false;
+
+function buildRouteGeometry(r){
+  routePts = []; routeCum = []; routeTotal = 0; routeSteps = []; routeSec = 0;
+  if(!r || !r.steps) return;
+  routeSec = r.time || 0;
+  let acc = 0;
+  r.steps.forEach(st => {
+    const path = st.path || [];
+    const endIdx = routePts.length + path.length;
+    const last = path.length ? [path[path.length-1].lng, path[path.length-1].lat] : null;
+    routeSteps.push({ endIdx: endIdx, instr: st.instruction || '', loc: last });
+    path.forEach(pt => {
+      if(routePts.length){
+        try{ acc += AMap.GeometryUtil.distance(routePts[routePts.length-1], [pt.lng, pt.lat]); }catch(e){}
+      }
+      routePts.push([pt.lng, pt.lat]);
+      routeCum.push(acc);
+    });
+  });
+  routeTotal = acc;
+}
+
+function nearestIdx(lng, lat){
+  let best = -1, bestD = Infinity;
+  for(let i = 0; i < routePts.length; i++){
+    let d = Infinity;
+    try{ d = AMap.GeometryUtil.distance([lng, lat], routePts[i]); }catch(e){}
+    if(d < bestD){ bestD = d; best = i; }
+  }
+  return best;
+}
+
+function fmtDist(m){
+  return m >= 1000 ? (m/1000).toFixed(1) + ' 公里' : Math.round(m / 10) * 10 + ' 米';
+}
+
+/* ============ 车辆图标：白色小车 + 朝向 + 淡方位环 ============ */
+var lastHeading = 0;
+
+function carMarkerHTML(){
+  return '<div class="carmark">' +
+    '<div class="carring"></div>' +
+    '<div class="carico" id="carIco">' +
+      '<svg width="34" height="44" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M15 0 L28.5 39 L15 32.5 L1.5 39 Z" fill="#ffffff"/>' +
+        '<path d="M15 8 L21 30 L15 26.5 L9 30 Z" fill="#5aa8ff"/>' +
+      '</svg>' +
+    '</div>' +
+    '<div class="carlbl north" id="lblN">北</div>' +
+    '<div class="carlbl" id="lblE">东</div>' +
+    '<div class="carlbl" id="lblS">南</div>' +
+    '<div class="carlbl" id="lblW">西</div>' +
+  '</div>';
+}
+
+function makeMyMarker(){
+  const m = new AMap.Marker({ position:myPos, content:carMarkerHTML(),
+    anchor:'center', zIndex:120 });
+  m.setMap(map);
+  return m;
+}
+
+/* 两点间的方位角（0=正北，90=正东） */
+function bearingOf(a, b){
+  const rad = Math.PI/180;
+  const y = Math.sin((b[0]-a[0])*rad) * Math.cos(b[1]*rad);
+  const x = Math.cos(a[1]*rad)*Math.sin(b[1]*rad) - Math.sin(a[1]*rad)*Math.cos(b[1]*rad)*Math.cos((b[0]-a[0])*rad);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+function headingAt(i){
+  if(!routePts.length) return null;
+  const j = Math.min(i + 3, routePts.length - 1);
+  if(i >= j) return null;
+  return bearingOf(routePts[i], routePts[j]);
+}
+
+function updateCarMarker(pos){
+  const c = pos && pos.coords;
+  let hd = null;
+  if(c && c.heading !== null && c.heading !== undefined && isFinite(c.heading)) hd = c.heading;
+
+  if(hd === null && routePts.length && myPos){
+    const i = nearestIdx(myPos[0], myPos[1]);
+    if(i >= 0) hd = headingAt(i);
+  }
+  if(hd === null) hd = lastHeading;
+  lastHeading = hd || 0;
+
+  const rot = (map && map.getRotation) ? (map.getRotation() || 0) : 0;
+
+  const ico = document.getElementById('carIco');
+  if(ico) ico.style.transform = 'translate(-50%,-50%) rotate(' + (lastHeading - rot) + 'deg)';
+
+  const R = 50;
+  const dirs = [['lblN', 0], ['lblE', 90], ['lblS', 180], ['lblW', 270]];
+  dirs.forEach(d => {
+    const el = document.getElementById(d[0]);
+    if(!el) return;
+    const th = (d[1] - rot) * Math.PI / 180;
+    el.style.left = (Math.sin(th) * R).toFixed(1) + 'px';
+    el.style.top  = (-Math.cos(th) * R).toFixed(1) + 'px';
+  });
+}
+
+function shortAction(s){  s = String(s || '');
+  if(s.indexOf('掉头') >= 0) return '掉头';
+  if(s.indexOf('到达') >= 0 || s.indexOf('终点') >= 0) return '到达终点';
+  if(/左转|向左|左前方/.test(s)) return '左转';
+  if(/右转|向右|右前方/.test(s)) return '右转';
+  if(/直行|向前|沿当前/.test(s)) return '直行';
+  return '继续行驶';
+}
+
+function iconOf(s){
+  const a = shortAction(s);
+  if(a === '掉头') return '⤺';
+  if(a === '左转') return '↰';
+  if(a === '右转') return '↱';
+  if(a === '到达终点') return '⚑';
+  return '↑';
+}
+
+/* 罗盘指针：地图转过多少度，指针反向转多少度，永远指正北 */
+function syncCompass(){
+  if(!map) return;
+  let r = 0;
+  try{ r = map.getRotation() || 0; }catch(e){}
+  const n = document.getElementById('cmpNeedle');
+  const box = document.getElementById('compass');
+  if(n) n.style.transform = 'rotate(' + (-r) + 'deg)';
+  if(box) box.classList.toggle('on', Math.abs(Math.round(r)) > 2);
+  if(lastPos) updateCarMarker(lastPos);
+}
+
+function updateHUD(pos){
+  const c = pos.coords;
+  const kmh = (c.speed !== null && c.speed !== undefined && isFinite(c.speed)) ? Math.round(c.speed * 3.6) : null;
+  const spdEl = document.getElementById('spdNum');
+  if(spdEl) spdEl.textContent = kmh === null ? '--' : String(kmh);
+
+  if(!curDest || !routePts.length) return;
+
+  const i = nearestIdx(c.longitude, c.latitude);
+  const remain = Math.max(0, routeTotal - (routeCum[i] || 0));
+
+  /* 剩余米数：跟原版一样按 10 米往下跳 */
+  document.getElementById('remMeter').textContent = String(Math.max(0, Math.round(remain / 10) * 10));
+
+  /* 剩余分钟：用这条路自己的平均车速折算，不是编的数字 */
+  const perSec = routeSec > 0 ? routeTotal / routeSec : 0;
+  const mins = perSec > 0 ? Math.max(1, Math.round(remain / perSec / 60)) : 0;
+  document.getElementById('remMin').textContent = String(mins);
+
+  /* 下一处转弯 */
+  let ns = null;
+  for(let k = 0; k < routeSteps.length; k++){
+    if(routeSteps[k].endIdx > i){ ns = routeSteps[k]; break; }
+  }
+  if(ns){
+    const dLeft = Math.max(0, (routeCum[ns.endIdx - 1] || 0) - (routeCum[i] || 0));
+    document.getElementById('turnDist').textContent = fmtDist(dLeft);
+    document.getElementById('turnText').textContent = shortAction(ns.instr);
+    document.getElementById('turnIco').textContent = iconOf(ns.instr);
+    document.getElementById('turnCard').classList.add('on');
+  }
+
+  /* 3D 视角跟随：有导航时才跟着车头转 */
+  if(is3D && map && myPos){
+    map.setCenter(myPos);
+    const hd = c.heading;
+    if(hd !== null && hd !== undefined && isFinite(hd)) map.setRotation(hd);
+  }
+}
+
+function startWatch(){
+  if(!navigator.geolocation || watchId !== null) return;
+  watchId = navigator.geolocation.watchPosition(
+    p => {
+      myPos = [p.coords.longitude, p.coords.latitude];
+      lastPos = p;
+      if(myMarker) myMarker.setPosition(myPos);
+      updateCarMarker(p);
+      updateHUD(p);
+    },
+    err => {},
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+  );
+}
+
+/* ============ 音乐部分 ============ */
+const AU = document.getElementById('au');
+let curIdx = -1, lines = [], curLine = -1, rafId = null;
+
+function songURL(id){ return 'https://music.163.com/song/media/outer/url?id=' + id + '.mp3'; }
+
+function parseLRC(txt){
+  const out = [];
+  String(txt || '').split('\n').forEach(line => {
+    const tags = line.match(/\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g) || [];
+    if(!tags.length) return;
+    const word = line.replace(/\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/g, '').trim();
+    if(!word) return;
+    tags.forEach(tag => {
+      const m = tag.match(/\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]/);
+      const t = (+m[1])*60 + (+m[2]) + (m[3] ? +('0.' + m[3].padEnd(3,'0')) : 0);
+      out.push({ t, w: word });
+    });
+  });
+  out.sort((a,b) => a.t - b.t);
+  return out;
+}
+
+function renderList(){
+  const body = document.getElementById('listBody');
+  body.innerHTML = '';
+  SONGS.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'litem' + (i === curIdx ? ' on' : '');
+    el.innerHTML = '<div class="lnum">' + (i+1) + '</div>' +
+      '<div class="lname">' + esc(s.name) + '</div>' +
+      '<div class="lsinger">' + esc(s.artist || '') + '</div>';
+    el.onclick = () => { play(i); document.getElementById('songList').classList.remove('on'); };
+    body.appendChild(el);
+  });
+}
+
+function play(i){
+  if(!SONGS.length){ toast('歌单是空的'); return; }
+  curIdx = (i + SONGS.length) % SONGS.length;
+  const s = SONGS[curIdx];
+  document.getElementById('pName').textContent = s.name;
+  document.getElementById('pArtist').textContent = s.artist || '';
+  document.getElementById('cover').textContent = (s.name || '歌').slice(0,1);
+  lines = parseLRC(s.lrc); curLine = -1;
+  document.getElementById('lyCur').textContent = '加载中…';
+  document.getElementById('lyPrev').textContent = '';
+  document.getElementById('lyNext').textContent = '';
+
+  AU.src = songURL(s.id);
+  AU.load();
+  const p = AU.play();
+  if(p && p.catch) p.catch((e) => {
+    document.getElementById('lyCur').textContent =
+      (e && e.name === 'NotAllowedError') ? '再点一下播放键就行' : '缓冲中…';
+  });
+  document.getElementById('btnPlay').textContent = '⏸';
+  renderList();
+  startRAF();
+}
+
+function togglePlay(){
+  if(curIdx < 0){ play(0); return; }
+  if(AU.paused){ AU.play(); document.getElementById('btnPlay').textContent = '⏸'; startRAF(); }
+  else { AU.pause(); document.getElementById('btnPlay').textContent = '▶'; }
+}
+
+function startRAF(){
+  if(rafId) return;
+  const loop = () => { updateLyric(); rafId = requestAnimationFrame(loop); };
+  rafId = requestAnimationFrame(loop);
+}
+
+function updateLyric(){
+  const t = AU.currentTime || 0;
+  const dur = AU.duration || 0;
+  if(dur) document.getElementById('pFill').style.width = Math.min(100, (t/dur)*100) + '%';
+
+  if(!lines.length) return;
+  let i = -1;
+  for(let k = 0; k < lines.length; k++){ if(lines[k].t <= t) i = k; else break; }
+  if(i !== curLine){
+    curLine = i;
+    document.getElementById('lyPrev').textContent = i > 0 ? lines[i-1].w : '';
+    document.getElementById('lyCur').textContent = i >= 0 ? lines[i].w : '♪';
+    document.getElementById('lyNext').textContent = (i+1 < lines.length) ? lines[i+1].w : '';
+  }
+  if(i >= 0){
+    const start = lines[i].t;
+    const end = (i+1 < lines.length) ? lines[i+1].t : start + 4;
+    const p = Math.max(0, Math.min(1, (t - start) / Math.max(0.4, end - start)));
+    document.getElementById('lyCur').style.setProperty('--p', (p*100).toFixed(1) + '%');
+  }
+}
+
+async function nextSong(step){
+  if(curIdx < 0){ play(0); return; }
+  // 优先找同一演唱者的下一首，播放期间"下一首"更好用
+  play(curIdx + step);
+}
+
+document.getElementById('btnPlay').onclick = togglePlay;
+document.getElementById('btnPrev').onclick = () => nextSong(-1);
+document.getElementById('btnNext').onclick = () => nextSong(1);
+document.getElementById('btnList').onclick = () => {
+  const l = document.getElementById('songList');
+  l.classList.toggle('on');
+  if(l.classList.contains('on')) renderList();
+};
+document.getElementById('pBar').onclick = (e) => {
+  if(!AU.duration) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  AU.currentTime = ((e.clientX - r.left) / r.width) * AU.duration;
+};
+document.getElementById('lyricBox').onclick = () => document.body.classList.toggle('lyricfull');
+document.getElementById('btnLyric').onclick = () => {
+  const box = document.getElementById('lyricBox');
+  const on = box.classList.toggle('on');
+  document.body.classList.remove('lyricfull');
+  document.getElementById('btnLyric').classList.toggle('on', on);
+};
+AU.addEventListener('ended', () => nextSong(1));
+AU.addEventListener('error', () => {
+  document.getElementById('lyCur').textContent = '这首播不出来（可能版权受限）';
+  document.getElementById('btnPlay').textContent = '▶';
+});
+
+renderList();
+
+/* ============ 毛豆：一句话 -> 一个动作（关键词判断，0.1 秒） ============ */
+function mdSay(msg){ toast('毛豆：' + msg, 2600); }
+
+/* 四态：待机(灰静止) / 在听(蓝跑动) / 思考(琥珀快跑) / 明白(绿一下) —— 全程不写字 */
+let mtSpeakTimer = null;
+function mtState(state){
+  const pill = document.getElementById('mtPill');
+  const box  = document.getElementById('mtBox');
+  if(!pill || !box) return;
+  const open = box.classList.contains('on');
+  const el = open ? box : pill;
+  [pill, box].forEach(x => x.classList.remove('listening', 'thinking', 'speaking'));
+  pill.style.display = open ? 'none' : 'flex';
+  if(state !== 'idle') el.classList.add(state);
+
+  clearTimeout(mtSpeakTimer);
+  if(state === 'thinking'){
+    mtSpeakTimer = setTimeout(() => mtState('speaking'), 460);
+  }else if(state === 'speaking'){
+    mtSpeakTimer = setTimeout(() => {
+      box.classList.remove('on');
+      mtState('idle');
+    }, 1150);
+  }
+}
+
+function maoDo(raw){
+  const t = String(raw || '').trim().replace(/[，。！？、,.!?\s]/g, '');
+  const inp = document.getElementById('mtInput');
+  const box = document.getElementById('mtBox');
+  if(!t){ return; }
+  if(inp) inp.value = '';
+  if(box) box.classList.remove('on');
+  mtState('thinking');
+
+  /* 视角 */
+  if(/3d|三维|立体|斜着看/i.test(t)){ set3D(true); return mdSay('切到 3D'); }
+  if(/2d|平面|平整|平的/i.test(t)){ set3D(false); return mdSay('切到 2D'); }
+  if(/正北|朝北|回正|摆正/.test(t)){ document.getElementById('compass').click(); return mdSay('回正北了'); }
+  if(/放大|大一点/.test(t)){ if(map) map.zoomIn(); return mdSay('放大'); }
+  if(/缩小|小一点/.test(t)){ if(map) map.zoomOut(); return mdSay('缩小'); }
+
+  /* 歌词 */
+  if(/歌词|字幕|词/.test(t)){
+    const want = !/关|隐藏|不要|去掉|别显示|别出/.test(t);
+    const on = document.getElementById('lyricBox').classList.contains('on');
+    if(on !== want) document.getElementById('btnLyric').click();
+    return mdSay(want ? '歌词打开了' : '歌词关掉了');
+  }
+
+  /* 音乐 */
+  if(/下一首|下一个|换一首|换曲|下首/.test(t)){ nextSong(1); return mdSay('下一首'); }
+  if(/上一首|上一个|上首|前一首/.test(t)){ nextSong(-1); return mdSay('上一首'); }
+  if(/暂停|停一下|别放了|停了/.test(t)){ if(!AU.paused) togglePlay(); return mdSay('暂停了'); }
+  if(/继续|接着放|恢复|接着听/.test(t)){ if(AU.paused) togglePlay(); return mdSay('继续'); }
+
+  const hit = SONGS.findIndex(s => t.indexOf(s.name) >= 0);
+  if(hit >= 0){ play(hit); return mdSay('放《' + SONGS[hit].name + '》'); }
+  if(/放歌|播放|听歌|放音乐|来首|放一首|开音乐/.test(t)){
+    if(AU.paused){ if(curIdx < 0) play(0); else togglePlay(); }
+    return mdSay('放着呢');
+  }
+
+  /* 结束导航 */
+  if(/结束导航|取消导航|退出导航|不导航了/.test(t)){ document.getElementById('btnClear').click(); return mdSay('导航结束了'); }
+
+  /* 导航：固定地点 */
+  const QUICK = [
+    [/回家|到家|回去睡觉/, 'home'],
+    [/公司|上班/, 'work'],
+    [/充电/, 'charge'],
+    [/加油/, 'gas'],
+    [/停车/, 'park'],
+    [/厕所|洗手间|卫生间|上厕所/, 'wc']
+  ];
+  for(let i = 0; i < QUICK.length; i++){
+    if(QUICK[i][0].test(t)){
+      const key = QUICK[i][1];
+      const tile = TILES.find(x => x.key === key);
+      const kw = (settings[key] && settings[key].kw) || (tile ? tile.kw : '家');
+      const nm = (settings[key] && settings[key].name) || (tile ? tile.name : '家');
+      goKeyword(kw);
+      return mdSay('去「' + nm + '」');
+    }
+  }
+
+  /* 导航：说地名 */
+  const m = t.match(/(?:导航到|导航去|带我去|我要去|我想去|去|到)(.{2,})/);
+  if(m){
+    const kw = m[1].replace(/吧|呢|啊|呀|哈|嘛/g, '');
+    if(kw.length >= 2){ goKeyword(kw); return mdSay('找「' + kw + '」'); }
+  }
+
+  return mdSay('这句没听懂，试试「去充电站」「下一首」「显示歌词」');
+}
+
+(function bindMaoDou(){
+  const pill = document.getElementById('mtPill');
+  const box = document.getElementById('mtBox');
+  const inp = document.getElementById('mtInput');
+  if(!pill || !box || !inp) return;
+
+  pill.onclick = () => {
+    const open = box.classList.toggle('on');
+    if(open){
+      mtState('listening');
+      setTimeout(() => inp.focus(), 60);
+    }else{
+      mtState('idle');
+    }
+  };
+
+  inp.addEventListener('blur', () => {
+    setTimeout(() => {
+      if(!box.classList.contains('on')) return;
+      if(!inp.value.trim()){ box.classList.remove('on'); mtState('idle'); }
+    }, 400);
+  });
+
+  let timer = null;
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const v = inp.value.trim();
+    if(!v) return;
+    /* 车机键盘的语音输入会在说完后一次性写入文字，等它停手再执行 */
+    timer = setTimeout(() => { if(inp.value.trim()) maoDo(inp.value); }, 1100);
+  });
+  inp.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); maoDo(inp.value); }
+  });
+  const go = document.getElementById('mtGo');
+  if(go) go.onclick = () => maoDo(inp.value);
+
+  const fold = document.getElementById('btnFold');
+  if(fold) fold.onclick = () => {
+    const mini = document.body.classList.toggle('mini');
+    fold.textContent = mini ? '⌃' : '⌄';
+  };
+})();
+</script>
+</body>
+</html>
